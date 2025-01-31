@@ -1,0 +1,19 @@
+# environment.yml
+name: ai-core
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.10
+  - pyzmq
+  - loguru
+  - protobuf
+  - pytorch
+  - torchvision
+  - cudatoolkit=11.8.0  # 若使用GPU
+  - pytest
+  - pre-commit
+  - pip
+  - pip:
+      - mypy
+      - black
