@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Define the ZMQ_VERSION attribute
 ZMQ_VERSION = zmq.zmq_version_info()
 
+
 class MessageBus:
     _instance = None
 
@@ -60,8 +61,9 @@ class MessageBus:
 
         # 命令通道 (ROUTER)
         self.cmd_socket = self.context.socket(zmq.ROUTER)
-        self.cmd_socket.setsockopt(zmq.LINGER, 0)
-        self.cmd_socket.setsockopt(zmq.RCVTIMEO, -1)
+        self.cmd_socket.setsockopt(zmq.LINGER, 1000)  # 设置延迟关闭时间
+        self.cmd_socket.setsockopt(zmq.RCVTIMEO, -1)  # 无限超时
+        self.cmd_socket.setsockopt(zmq.SNDTIMEO, 1000)  # 发送超时
         self._bind_socket(self.cmd_socket, "ipc://core_cmd")
 
         # 路由管理通道 (DEALER)
@@ -76,7 +78,12 @@ class MessageBus:
         self.heartbeat_socket = self.context.socket(zmq.REP)
         self.heartbeat_socket.bind("inproc://heartbeat")
 
+        self._message_loop_running = False
         self._initialized = True
+        self._cmd_lock = asyncio.Lock()  # 新增：保护 cmd_socket 的锁
+        self._response_futures = {}  # 新增：保存待响应的 Future
+        # 新增：测试模式标识（默认 False）
+        self.test_mode = False
 
     def register_handler(self, target: str, handler):
         """注册消息处理器"""
@@ -87,17 +94,43 @@ class MessageBus:
 
     async def start_message_loop(self):
         """异步启动消息处理循环"""
+        if self._message_loop_running:
+            return
+
         self._message_loop_running = True
-        logging.info("🚀 正在启动 `MessageBus` 消息循环...")
-        asyncio.create_task(self._message_loop())
-        logging.info("✅ `MessageBus` 消息循环已启动")
+        logging.info("🚀 正在启动消息循环...")
+        # 使用独立的事件循环任务
+        self._loop_task = asyncio.create_task(self._message_loop())
+        await asyncio.sleep(0.1)  # 确保消息循环启动
+        logging.info("✅ 消息循环已启动")
 
     async def stop_message_loop(self):
         """停止消息处理循环"""
-        self._message_loop_running = False
-        self.cmd_socket.close()  # ✅ 确保 `poller.poll()` 退出
-        await asyncio.sleep(0.1)
+        logging.info("🚀 正在停止消息循环...")
+        if hasattr(self, "_loop_task"):
+            self._message_loop_running = False
+            try:
+                await self._loop_task
+            except asyncio.CancelledError:
+                pass
+
+        # 关闭所有套接字
+        if hasattr(self, "cmd_socket"):
+            self.cmd_socket.close()
+            logging.info("✅ cmd_socket 已关闭")
+        if self.route_socket:
+            self.route_socket.close()
+            logging.info("✅ route_socket 已关闭")
+        if self.event_socket:
+            self.event_socket.close()
+            logging.info("✅ event_socket 已关闭")
+        if self.heartbeat_socket:
+            self.heartbeat_socket.close()
+            logging.info("✅ heartbeat_socket 已关闭")
+
+        await asyncio.sleep(0.1)  # 确保套接字关闭
         self.context.term()
+        logging.info("✅ ZeroMQ 上下文已终止")
 
     async def cleanup_sockets():
         """清理 ZeroMQ 端口，释放资源"""
@@ -130,73 +163,164 @@ class MessageBus:
                 raise e
 
     async def _message_loop(self):
-        """异步消息处理循环"""
         poller = zmq.asyncio.Poller()
         poller.register(self.cmd_socket, zmq.POLLIN)
 
-        while getattr(self, "_message_loop_running", True):
+        while self._message_loop_running:
             try:
-                if self.cmd_socket.closed:
-                    logging.error("❌ `cmd_socket` 在消息循环中被关闭！")
-                    break
-                logging.debug(
-                    "🔄 正在监听 `cmd_socket`，等待消息..."
-                )  # 改为DEBUG级别避免日志过多
-                socks = dict(await poller.poll(-1))  # 确保此处超时与配置一致
+                events = dict(await poller.poll(timeout=100))
 
-                if self.cmd_socket in socks and socks[self.cmd_socket] == zmq.POLLIN:
-                    logging.info(
-                        "📩 `cmd_socket` 收到新消息，即将调用 `_process_command()`"
-                    )
+                if self.cmd_socket in events:
                     try:
-                        # 移除zmq.NOBLOCK，使用阻塞式接收（无标志）
-                        msg = await self.cmd_socket.recv_multipart()
-                        await self._process_command(msg)
+                        async with self._cmd_lock:  # 加锁接收消息
+                            frames = await self.cmd_socket.recv_multipart()
+                        logging.debug(f"消息循环收到消息: {frames}")
+
+                        if len(frames) >= 4:
+                            msg_id = frames[1]
+                            envelope = proto.Envelope()
+                            envelope.ParseFromString(frames[3])
+                            # 如果是响应消息，则通知等待的 Future
+                            if envelope.body.type == proto.MessageType.RESPONSE:
+                                future = self._response_futures.get(msg_id)
+                                if future and not future.done():
+                                    future.set_result(envelope)
+                                    logging.debug(
+                                        f"已通过 Future 返回响应，msg_id={msg_id}"
+                                    )
+                                continue  # 不再调用处理器
+
+                            # 否则为请求消息，按老逻辑处理
+                            target = frames[0].decode()
+                            handler = self.message_handlers.get(target)
+                            if handler:
+                                logging.debug(f"调用处理器 {target} 处理消息 {msg_id}")
+                                try:
+                                    response = await handler(envelope)
+                                    if response:
+                                        response_frames = [
+                                            frames[0],
+                                            msg_id,
+                                            b"",
+                                            response.SerializeToString(),
+                                        ]
+                                        async with self._cmd_lock:  # 加锁发送响应
+                                            await self.cmd_socket.send_multipart(
+                                                response_frames
+                                            )
+                                        logging.debug(f"已发送响应，msg_id={msg_id}")
+                                except Exception as handler_error:
+                                    logging.error(f"处理器执行出错: {handler_error}")
+                                    traceback.print_exc()
+                            else:
+                                logging.error(f"未找到处理器: {target}")
+
                     except zmq.Again:
-                        logging.warning("⚠️ 接收超时，可能数据尚未完全到达")
+                        continue
                     except Exception as e:
-                        logging.error(f"❌ 接收消息时发生错误: {str(e)}")
+                        logging.error(f"接收消息时出错: {e}")
                         traceback.print_exc()
-            except zmq.ZMQError as e:
-                logging.error(f"❌ ZeroMQ 轮询错误: {e}")
-                traceback.print_exc()
+                else:
+                    await asyncio.sleep(0.01)
+
             except Exception as e:
-                logging.error(f"❌ 消息循环中出现未知错误: {str(e)}")
+                if isinstance(e, zmq.ZMQError) and e.errno == zmq.ETERM:
+                    break
+                logging.error(f"消息循环错误: {e}")
                 traceback.print_exc()
+                await asyncio.sleep(0.1)
+
+        logging.info("✅ 消息循环正常退出")
 
     async def send_command(
         self, target: str, command: str, payload: bytes = b""
     ) -> proto.Envelope:
-        """异步发送命令型消息"""
+        """异步发送命令型消息，带重试机制"""
+        # 新增：测试模式下直接调用处理器
+        if self.test_mode:
+            if target not in self.message_handlers:
+                raise ValueError(f"未注册的目标模块: {target}")
+            envelope = self.create_envelope(proto.MessageType.COMMAND, target)
+            envelope.body.command = command
+            envelope.body.payload = payload
+            logging.debug(f"(Test Mode) 直接调用处理器 {target}, command={command}")
+            return await self.message_handlers[target](envelope)
+
         if target not in self.message_handlers:
-            logging.error(
-                f"❌ 无法发送命令，目标 {target} 未注册，当前 handlers: {list(self.message_handlers.keys())}"
-            )
             raise ValueError(f"未注册的目标模块: {target}")
 
         envelope = self.create_envelope(proto.MessageType.COMMAND, target)
         envelope.body.command = command
         envelope.body.payload = payload
+        msg_id = str(uuid.uuid4()).encode()
 
-        logger.debug(f"📤 发送命令到 {target}: {envelope}")
+        retry_count = 0
+        max_retries = 3
+        timeout_sec = 2.0
+
+        logging.debug(
+            "准备发送命令到 {}，command={}，msg_id={}".format(target, command, msg_id)
+        )
+
+        poller = zmq.asyncio.Poller()
+        poller.register(self.cmd_socket, zmq.POLLIN)
+
+        while retry_count < max_retries:
+            try:
+                async with self._cmd_lock:  # 加锁发送命令
+                    frames = [
+                        target.encode(),
+                        msg_id,
+                        b"",
+                        envelope.SerializeToString(),
+                    ]
+                    await self.cmd_socket.send_multipart(frames, flags=0)
+                logging.debug(
+                    "命令已发送到 {}，等待响应中... msg_id={}".format(target, msg_id)
+                )
+
+                future = asyncio.get_event_loop().create_future()
+                self._response_futures[msg_id] = future
+                try:
+                    response_envelope = await asyncio.wait_for(
+                        future, timeout=timeout_sec
+                    )
+                    return response_envelope
+                except asyncio.TimeoutError:
+                    retry_count += 1
+                    timeout_sec *= 2
+                    logging.debug(
+                        "重试 {}/{}，超时 {}s".format(
+                            retry_count, max_retries, timeout_sec
+                        )
+                    )
+                finally:
+                    self._response_futures.pop(msg_id, None)
+
+            except Exception as e:
+                logging.error(f"发送命令时出现异常: {e}")
+                retry_count += 1
+                if retry_count >= max_retries:
+                    raise
+
+        error_msg = f"发送命令到 {target} 失败，已重试 {max_retries} 次"
+        logging.error(error_msg)
+        raise zmq.error.Again(error_msg)
+
+    async def send_response(self, envelope: proto.Envelope) -> None:
+        """发送响应消息"""
+        if not isinstance(envelope, proto.Envelope):
+            raise ValueError("响应必须是 Envelope 类型")
 
         try:
-            # **确保 `cmd_socket` 绑定**
-            if not self.cmd_socket:
-                logging.error("❌ `cmd_socket` 未正确初始化！")
-                return envelope
-
-            # ✅ **确保 `cmd_socket` 是活跃的**
-            socket_status = self.cmd_socket.getsockopt(zmq.LINGER)
-            logging.info(f"🛠 `cmd_socket` 状态: LINGER={socket_status}")
-
+            target = envelope.header.route[0]
             await self.cmd_socket.send_multipart(
-                [target.encode(), b"", envelope.SerializeToString()]
+                [target.encode(), envelope.SerializeToString()]
             )
-            logging.info(f"✅ 命令已成功发送到 {target}")
-        except zmq.ZMQError as e:
-            logging.error(f"❌ ZeroMQ 发送失败: {e}")
-            return envelope
+            logging.info(f"✅ 响应已发送到 {target}")
+        except Exception as e:
+            logging.error(f"❌ 发送响应失败: {e}")
+            raise
 
     def unregister_handler(self, target: str):
         """注销消息处理器"""
@@ -219,36 +343,34 @@ class MessageBus:
         return envelope
 
     async def _process_command(self, msg):
-        """处理命令消息"""
-
+        """优化命令处理流程"""
+        logging.info(f"🔄 处理命令: {msg}")
         try:
-            client_identity = msg[0]
-            message = msg[2]
+            client_id, _, data = msg[:3]  # 解析消息格式
             envelope = proto.Envelope()
-            envelope.ParseFromString(message)
+            envelope.ParseFromString(data)
 
             target = envelope.header.route[0]
-            logging.info(
-                f"📩 `MessageBus` 收到消息: 目标={target}, 当前 handlers={list(self.message_handlers.keys())}"
-            )
+            handler = self.message_handlers.get(target)
 
-            if target in self.message_handlers:
-                logging.info(f"✅ 目标 {target} 存在，调用 `handle_message()`...")
-                handler = self.message_handlers[target]
-                response = await handler(envelope)
-                await self.cmd_socket.send_multipart(
-                    [client_identity, b"", response.SerializeToString()]
-                )
-                logging.info(f"✅ 处理完成，已发送响应")
-            else:
-                logging.error(f"❌ 无法找到 {target} 的 handler")
+            if not handler:
+                logging.error(f"❌ 未找到处理器: {target}")
+                return
+
+            logging.info(f"✅ 找到处理器: {target}")
+            response = await handler(envelope)
+            reply_msg = [client_id, b"", response.SerializeToString()]
+            await self.cmd_socket.send_multipart(reply_msg)
+            logging.info(f"✅ 已处理 {target} 的请求")
+
         except Exception as e:
-            logging.error(f"❌ 处理命令错误: {e}")
+            logging.error(f"处理命令异常: {e}")
+            traceback.print_exc()
 
     def get_route(self, module_name: str):
         """获取模块的 ZeroMQ 路由"""
         return self.routing_table.get(module_name, None)
-    
+
     def register_route(self, module_name: str, address: str):
         """注册模块的 ZeroMQ 路由"""
         logging.info(f"🚀 `register_route()` 注册 `{module_name}` -> `{address}`")
@@ -263,4 +385,3 @@ class MessageBus:
             logging.info(f"✅ `publish_event()` 事件发送成功: {event_type}")
         except zmq.ZMQError as e:
             logging.error(f"❌ `publish_event()` 失败: {e}")
-

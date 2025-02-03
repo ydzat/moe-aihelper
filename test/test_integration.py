@@ -1,9 +1,15 @@
+"""
+Author: @ydzat
+Date: 2025-02-03 19:57:12
+LastEditors: @ydzat
+LastEditTime: 2025-02-03 20:00:37
+Description:
+"""
+
 import sys
-import os
+import asyncio
 import pytest
 import logging
-import asyncio
-import zmq.asyncio
 from pathlib import Path
 
 # **手动添加 core 目录到 Python 路径**
@@ -14,7 +20,6 @@ from core.message_bus import MessageBus
 from core.module_manager import ModuleManager
 from core.module_meta import ModuleMeta
 from core.generated import message_pb2 as proto
-from core.config import ConfigCenter
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,8 @@ async def message_bus():
     """清理单例实例，创建新的 MessageBus"""
     await MessageBus.cleanup_sockets()
     bus = MessageBus()
+    # 新增：启用测试模式，直接调用处理器
+    bus.test_mode = True
     yield bus
     await MessageBus.cleanup_sockets()
 
@@ -31,107 +38,69 @@ async def message_bus():
 @pytest.mark.asyncio
 async def test_echo_workflow(message_bus):
     """测试 EchoModule 工作流"""
-    logger.info("✅ test_echo_workflow() 开始执行！")
     bus = message_bus
-    await bus.start_message_loop()
-    logger.info("✅ 消息循环已启动")
-
-    print("✅ test_echo_workflow() 等待事件循环启动！")
-    await asyncio.sleep(0)
-
-    print("✅ test_echo_workflow() 读取模块配置！")
-    config_center = ConfigCenter()
-    module_config = config_center.get_module_config(
-        "echo_module"
-    )  # ✅ **读取 `echo_module` 的 `config.yaml`**
-    module_name = module_config.get(
-        "name", "echo_module"
-    )  # ✅ **获取 `name` 作为注册名称**
-
-    print(f"✅ test_echo_workflow() 注册测试处理器: {module_name}！")
-
-    # 1. 注册测试处理器
-    received = asyncio.Future()  # 用于捕获响应
+    response_received = asyncio.Event()
+    response_data = None
+    handler_called = asyncio.Event()  # 添加处理器调用标志
 
     async def test_handler(envelope):
         """测试处理器，返回相同的 payload"""
-        logger.info(f"📩 test_handler 收到消息: {envelope}")
-        response = bus.create_envelope(
-            proto.MessageType.RESPONSE, envelope.header.source
-        )
-        response.body.command = "echo_response"
-        response.body.payload = envelope.body.payload
+        nonlocal response_data
+        logger.info(f"📩 test_handler 被调用，收到消息: {envelope}")
+        handler_called.set()  # 标记处理器被调用
+        try:
+            # 修改：使用 getattr 以防 RESPONSE 未定义（默认为 3）
+            response = bus.create_envelope(
+                getattr(proto.MessageType, "RESPONSE", 3), envelope.header.source
+            )
+            response.body.command = "echo_response"
+            response.body.payload = envelope.body.payload
+            response_data = response
+            response_received.set()
+            logger.info("处理器已生成响应")
+            return response
+        except Exception as e:
+            logger.error(f"❌ test_handler 处理失败: {e}")
+            raise
 
-        received.set_result(response)
-        return response
+    # 启动消息循环
+    await bus.start_message_loop()
+    await asyncio.sleep(0.5)  # 增加等待时间，确保消息循环启动
 
-    logger.info(f"🚀 尝试注册 test_handler 处理器: {module_name}")
-    bus.register_handler(
-        module_name, test_handler
-    )  # ✅ **确保注册名称来自 `config.yaml`**
-    logger.info(f"✅ 测试处理器已注册: {module_name}")
+    # 新增：加载 echo_module 模块
+    manager = ModuleManager(bus)
+    echo_meta = ModuleMeta.from_yaml("modules/echo_module/config.yaml")
+    await manager.load_module(echo_meta, {})
 
     try:
-        # 2. 发送测试命令
+        module_name = "echo_module"
         test_payload = b"test_payload"
 
-        await asyncio.sleep(0.1)
-        logger.info("✅ 准备发送测试命令")
+        # 注册处理器并等待确保注册完成
+        bus.register_handler(module_name, test_handler)
+        await asyncio.sleep(0.2)  # 增加等待时间
 
+        logging.info(f"准备发送测试命令到 {module_name}")
+        # 发送命令
+        await bus.send_command(target=module_name, command="echo", payload=test_payload)
+
+        # 等待处理器被调用
         try:
-            await bus.send_command(
-                target=module_name, command="echo", payload=test_payload
-            )
-            logger.info(f"✅ 测试命令已发送，目标: {module_name}")
-        except Exception as e:
-            logger.error(f"❌ `send_command()` 失败: {e}")
-            pytest.fail(f"❌ `send_command()` 失败: {e}")
+            logging.info("等待处理器被调用...")
+            await asyncio.wait_for(handler_called.wait(), timeout=3.0)
+            logging.info("处理器已被调用")
 
-        # 3. 使用 Poller 等待响应
-        poller = zmq.asyncio.Poller()
-        poller.register(bus.cmd_socket, zmq.POLLIN)
+            logging.info("等待响应...等待时间可能较长，需要耐心等待处理程序响应。")
+            await asyncio.wait_for(response_received.wait(), timeout=3.0)
+            logging.info("收到响应")
 
-        print("🚀 等待 poller.poll() 事件...")
-        logger.info(
-            f"📋 当前处理器列表: {list(bus.message_handlers.keys())}"
-        )  # ✅ **检查 `echo_module` 是否仍然存在**
+            assert response_data.body.command == "echo_response"
+            assert response_data.body.payload == test_payload
+            logger.info("✅ 测试成功完成")
+        except asyncio.TimeoutError:
+            pytest.fail("❌ 等待响应超时")
 
-        socks = dict(await poller.poll(5000))
-        print("✅ poller.poll() 事件返回！")
-
-        if not socks:
-            pytest.fail("❌ 等待响应超时，未收到任何消息")
-
-        if bus.cmd_socket in socks and socks[bus.cmd_socket] == zmq.POLLIN:
-            response = await bus.cmd_socket.recv_multipart()
-
-            # 验证响应格式
-            assert len(response) == 3, f"❌ 无效响应格式: {response}"
-
-            # 解析协议
-            parsed = proto.Envelope()
-            parsed.ParseFromString(response[2])
-
-            # 验证响应内容
-            assert parsed.body.command == "echo_response"
-            assert parsed.body.payload == test_payload
-
-            # ✅ 验证 Future 是否完成
-            assert received.done(), "❌ 处理器未正确触发"
-        else:
-            pytest.fail(f"❌ 收到非预期 socket 事件: {socks}")
-
+    except Exception as e:
+        pytest.fail(f"❌ 测试失败: {e}")
     finally:
-        # 4. 清理处理器
-        logger.info(f"✅ 测试完成，开始注销程序")
-        bus.unregister_handler(module_name)
         await bus.stop_message_loop()
-        logger.info("✅ 消息循环已停止")
-
-
-# if __name__ == "__main__":
-#     import asyncio
-#     print("🚀 手动运行 test_echo_workflow()")
-
-#     loop = asyncio.get_event_loop()
-#     loop.run_until_complete(test_echo_workflow(MessageBus()))

@@ -14,6 +14,7 @@ enum MessageType {
   COMMAND = 0;
   EVENT = 1;
   DATA_STREAM = 2;
+  RESPONSE = 3;  // 新增响应消息类型
 }
 
 message Body {

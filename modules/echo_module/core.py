@@ -1,7 +1,5 @@
-import asyncio
 import yaml
 from pathlib import Path
-import uuid
 import logging
 from core.module_meta import ModuleMeta
 from core.generated import message_pb2 as proto
@@ -33,7 +31,7 @@ class EchoModule(BaseModule):
         if module_config_path.exists():
             with open(module_config_path, "r") as f:
                 config = yaml.safe_load(f)
-            logging.info(f"✅ 加载 {module_config_path} 的配置: {config}")
+            logging.info("✅ 加载 {} 的配置: {}".format(module_config_path, config))
         else:
             config = {"logging_level": "DEBUG", "response_delay": 0}
             with open(module_config_path, "w") as f:
@@ -54,12 +52,10 @@ class EchoModule(BaseModule):
         """异步发送状态消息"""
         if "kernel" not in self.bus.message_handlers:
             raise ValueError("❌ `kernel` 处理器未注册")
-
+        # 使用 send_command 得到响应，不再直接调用 cmd_socket.recv_multipart
         envelope = await self.bus.send_command("kernel", command, b"echo_module")
         logging.info(f"[DEBUG][{self.module_name}] 已发送状态消息: {command}")
-
-        response = await self.bus.cmd_socket.recv_multipart()
-        logging.info(f"[DEBUG][{self.module_name}] 收到响应: {response}")
+        logging.info(f"[DEBUG][{self.module_name}] 收到响应: {envelope}")
 
     @classmethod
     async def pre_init(cls):
@@ -87,45 +83,26 @@ class EchoModule(BaseModule):
 
     @classmethod
     def get_metadata(cls) -> ModuleMeta:
-        """返回模块元数据"""
         return ModuleMeta(
             name="echo_module",
-            version="0.0.1",
+            version="1.0.0",
             dependencies=[],
             capabilities=["echo"],
-            entry_point="modules.echo_module.core:EchoModule",
+            entry_point="echo_module.core:EchoModule",
         )
 
     async def handle_message(self, envelope: proto.Envelope) -> proto.Envelope:
-        """异步处理 ECHO 命令，确保返回的是 `proto.Envelope`"""
-        logging.debug(f"[DEBUG][{self.module_name}] 处理消息: {envelope}")
-
-        response = proto.Envelope()
-        response.header.route.append(envelope.header.source)
-        response.header.source = self.module_name
-        response.header.msg_id = str(uuid.uuid4())
-
-        if envelope.body.type != proto.MessageType.COMMAND:
-            response.body.type = proto.MessageType.ERROR
-            response.body.command = "invalid_message_type"
-            response.body.payload = b"Expected COMMAND message type"
-            logging.error(
-                f"❌ {self.module_name} 收到无效消息类型: {envelope.body.type}"
-            )
-            return response
-
-        if envelope.body.command != "ECHO":
-            response.body.type = proto.MessageType.ERROR
-            response.body.command = "unsupported_command"
-            response.body.payload = b"Unsupported command, only ECHO is supported"
-            logging.error(
-                f"❌ {self.module_name} 收到不支持的命令: {envelope.body.command}"
-            )
-            return response
-
-        response.body.type = proto.MessageType.DATA_STREAM
+        logging.info(
+            f"📩 EchoModule 收到消息, msg_id={envelope.header.msg_id}: {envelope}"
+        )
+        response = self.bus.create_envelope(
+            proto.MessageType.RESPONSE, envelope.header.source
+        )
         response.body.command = "echo_response"
         response.body.payload = envelope.body.payload
-
-        logging.debug(f"[DEBUG][{self.module_name}] 发送响应: {response}")
-        return response  # ✅ 确保返回 `proto.Envelope`
+        # 确保响应保持相同的 msg_id
+        response.header.msg_id = envelope.header.msg_id
+        logging.info(
+            f"📤 EchoModule 生成响应, msg_id={response.header.msg_id}: {response}"
+        )
+        return response

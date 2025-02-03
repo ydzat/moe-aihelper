@@ -2,6 +2,7 @@ import sys
 import logging
 import asyncio
 from pathlib import Path
+import zmq
 from core.message_bus import MessageBus
 from core.module_manager import ModuleManager
 from core.module_meta import ModuleMeta
@@ -30,15 +31,25 @@ async def main():
     logging.info("开始启动核心系统...")
 
     # 启动消息总线的异步事件循环
-    asyncio.create_task(bus.start_message_loop())  # ✅ 使用异步任务启动消息循环
+    asyncio.create_task(bus.start_message_loop())
 
-    
-    await asyncio.sleep(1)  # 确保事件循环稳定
+    # 等待消息循环完全启动
+    await asyncio.sleep(1)
+
+    # 加载模块前确保消息总线就绪
+    for _ in range(10):  # 最多等待1秒
+        if bus._message_loop_running:
+            break
+        await asyncio.sleep(0.1)
+
+    if not bus._message_loop_running:
+        logging.error("❌ 消息总线启动失败")
+        return
+
     logging.info("🔄 加载模块")
     # 加载基础模块
     try:
-        
-        echo_meta = ModuleMeta.from_yaml("modules/echo_module/manifest.yaml")
+        echo_meta = ModuleMeta.from_yaml("modules/echo_module/config.yaml")
         if not await scheduler.allocate(
             echo_meta.name, {}
         ):  # ✅ 修改 allocate() 为异步方法
@@ -54,19 +65,16 @@ async def main():
     logging.info("✅ 核心系统启动完成，等待消息...")
 
     last_log_time = 0  # 记录上次打印 "正在监听" 的时间
+    quiet_mode = True  # 是否处于静默模式
 
     while True:
         try:
             current_time = asyncio.get_event_loop().time()
 
-            if current_time - last_log_time >= 1:
-                logging.info("🎧 正在监听消息通道...")
-                last_log_time = current_time
-
             try:
-                raw_msg = (
-                    await bus.cmd_socket.recv_multipart()
-                )  # ✅ 使用异步方法接收消息
+                raw_msg = await bus.cmd_socket.recv_multipart(flags=zmq.NOBLOCK)
+                # 收到消息时，切换到非静默模式
+                quiet_mode = False
                 envelope = proto.Envelope()
                 envelope.ParseFromString(raw_msg[2])
                 logging.info(f"📩 监听到消息: {envelope}")
@@ -76,35 +84,32 @@ async def main():
                 module = manager.get_module(target)
 
                 if module:
-                    response = await module.handle_message(
-                        envelope
-                    )  # ✅ 确保处理器支持异步
-
+                    response = await module.handle_message(envelope)
                     if isinstance(response, proto.Envelope):
-                        await bus.cmd_socket.send_multipart(
-                            [
-                                raw_msg[0],  # 客户端标识符
-                                b"",
-                                response.SerializeToString(),
-                            ]
-                        )
-                    else:
-                        logging.error(
-                            f"❌ 处理消息时出错: 返回了无效类型 {type(response)}"
-                        )
-                        error_response = proto.Envelope()
-                        error_response.header.route.append(envelope.header.source)
-                        error_response.header.source = "core"
-                        error_response.body.type = proto.MessageType.ERROR
-                        error_response.body.command = "internal_error"
-                        error_response.body.payload = b"Unexpected response type"
+                        retry_count = 0
+                        while retry_count < 3:
+                            try:
+                                await bus.cmd_socket.send_multipart(
+                                    [raw_msg[0], b"", response.SerializeToString()],
+                                    flags=zmq.NOBLOCK,
+                                )
+                                break
+                            except zmq.Again:
+                                retry_count += 1
+                                await asyncio.sleep(0.1 * retry_count)
+                        if retry_count == 3:
+                            logging.error("发送响应失败，达到最大重试次数")
 
-                        await bus.cmd_socket.send_multipart(
-                            [raw_msg[0], b"", error_response.SerializeToString()]
-                        )
-
+            except zmq.Again:
+                # 没有消息时，使用静默模式的日志
+                if quiet_mode and current_time - last_log_time >= 1:
+                    logging.info("🎧 正在监听消息通道...")
+                    last_log_time = current_time
+                await asyncio.sleep(0.01)
+                quiet_mode = True  # 重置为静默模式
             except asyncio.TimeoutError:
-                await asyncio.sleep(1)  # ✅ 避免空循环报错，并降低 CPU 占用
+                quiet_mode = True  # 超时时也重置为静默模式
+                await asyncio.sleep(0.1)
 
         except KeyboardInterrupt:
             break

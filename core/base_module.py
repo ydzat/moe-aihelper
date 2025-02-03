@@ -7,7 +7,6 @@ Description:
 """
 
 import logging
-import asyncio
 from core.module_meta import ModuleMeta
 from core.generated import message_pb2 as proto
 
@@ -17,7 +16,7 @@ class BaseModule:
         self.bus = bus
         self.module_name = self.__class__.__name__.lower()
 
-        # ✅ 确保处理器注册
+        # 注册处理器（如果未注册）
         if self.module_name not in self.bus.message_handlers:
             self.register_handlers()
 
@@ -40,8 +39,7 @@ class BaseModule:
     async def post_init(cls):
         """模块初始化后执行"""
         logging.info(f"✅ {cls.__name__} 初始化完成")
-        instance = cls(bus=cls.get_bus_instance())
-        instance.register_handlers()
+        # 如果需要额外的异步操作，可在此处理，不再实例化新对象
 
     def register_handlers(self):
         """注册消息处理器"""
