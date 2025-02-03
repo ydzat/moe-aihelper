@@ -1,3 +1,20 @@
+# Copyright (C) 2024 @ydzat
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 import sys
 import logging
 import asyncio
@@ -18,9 +35,25 @@ sys.path.insert(0, str(PROJECT_ROOT))
 MODULES_DIR = PROJECT_ROOT / "modules"
 sys.path.insert(0, str(MODULES_DIR))
 
+# 在导入之后添加AGPL合规检测函数
+def check_agpl_compliance():
+    # 在核心服务启动时检测AGPL合规
+    print("""
+    AGPL-3.0 合规提示：
+    您正在以网络服务形式运行本程序，根据协议第13条要求，必须向用户提供源代码获取方式，包括：
+    - 在服务界面显著位置提供源码下载链接
+    - 对注册用户发送包含源码仓库地址的邮件
+          
+    AGPL-3.0 Compliance Notice:
+    You are running this program as a network service. According to Section 13 of the license, you must provide users with a way to obtain the source code, including:
+    - Providing a prominent source code download link on the service interface.
+    - Sending an email containing the source code repository address to registered users.
+    """)
+
 
 async def main():
     logging.basicConfig(level=logging.DEBUG)
+    check_agpl_compliance()  # 调用合规检测函数
 
     # 初始化核心组件
     bus = MessageBus()

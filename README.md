@@ -2,7 +2,7 @@
  * @Author: @ydzat
  * @Date: 2025-01-31 22:06:43
  * @LastEditors: @ydzat
- * @LastEditTime: 2025-02-03 21:59:42
+ * @LastEditTime: 2025-02-03 22:44:31
  * @Description: Bilingual README for AI Personal Assistant Core
 -->
 
@@ -117,6 +117,9 @@ We envision an AI assistant that grows with users through:
 - 应用场景案例 📊
 
 ## LICENSE / 许可证
+
+[![AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 This project is licensed under the **GNU Affero General Public License v3 (AGPL-3.0)**.  
 This means you are free to use, modify, and distribute this software **as long as you also share your modifications under the same license**.
 
