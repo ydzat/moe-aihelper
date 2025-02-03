@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package core.proto;
+
+message Header {
+  string msg_id = 1;          // UUIDv4
+  string timestamp = 2;       // ISO8601格式
+  string source = 3;          // 源模块ID
+  repeated string route = 4;  // 路由路径
+  int32 retry_count = 5;      // 重试次数
+}
+
+enum MessageType {
+  COMMAND = 0;
+  EVENT = 1;
+  DATA_STREAM = 2;
+}
+
+message Body {
+  MessageType type = 1;
+  string command = 2;         // 命令标识符
+  bytes payload = 3;          // 二进制载荷
+  map<string, string> metadata = 4; // 元数据键值对
+}
+
+message Envelope {
+  Header header = 1;
+  Body body = 2;
+}

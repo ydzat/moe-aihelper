@@ -1,0 +1,10 @@
+name: echo_module
+version: 1.0.0
+entry_point: echo_module.core:EchoModule
+dependencies: []
+capabilities:
+  - echo
+required_resources:
+  cpu: 0.1
+  gpu: 0
+  memory: 128
