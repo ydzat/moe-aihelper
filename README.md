@@ -32,6 +32,20 @@ graph TD
 - **Resource Monitor**: Monitors system resources to ensure efficient operation.  
   **资源监控器**：监控系统资源以确保高效运行。
 
+## 🖥️ Platform Compatibility / 平台兼容性
+
+### Currently Supported / 当前支持  
+| Platform | Tested Version | Core Features | Notes |  
+|----------|----------------|---------------|-------|  
+| **Windows** | 10/11 22H2+ | Full functionality | GPU acceleration requires NVIDIA GPU |  
+| **Linux** | Fedora 38+ | Full functionality | Optimized for GNOME/KDE desktop environments |  
+
+### Future Consideration / 未来考量  
+| Platform | Status | Timeline |  
+|----------|--------|----------|  
+| macOS | Not planned | - |  
+| Android/iOS | Not planned | - |  
+
 ## Quick Start / 快速启动
 
 1. **Environment Setup** / **环境设置**:
@@ -76,23 +90,44 @@ class MyModule(BaseModule):
 pdoc3 --html core/ --force
 ```
 
-## Vision & Roadmap / 愿景与规划
+## 🌐 Core Technical Vision / 核心技术愿景
 
-### 🌟 Core Philosophy / 核心理念
-**Build a Thinking Digital Companion**  
-**构建会思考的数字伙伴**  
-We envision an AI assistant that grows with users through:  
-我们致力于打造一个与用户共同成长的AI助手：
+```mermaid
+graph TD
+    A[Local AI Agent] --> B[Workflow Automation Engine]
+    B --> C[Email Management]
+    B --> D[Document Generation]
+    B --> E[Courseware Organization]
+    C --> F[Smart Filtering]
+    D --> G[Template System]
+    E --> H[Multimedia Integration]
+```
 
-- **Contextual Awareness** 情境感知  
-  Maintains 50+ conversation context depth  
-  支持50+轮对话的上下文记忆
-- **Personality Engine** 人格引擎  
-  Role-playing with 100+ character templates  
-  提供多种角色扮演模板
-- **Self-Optimization** 自我进化  
-  Automatic performance tuning via RLHF  
-  通过强化学习实现自动优化
+**English**  
+Our ultimate goal is to create an **AI-driven digital workforce** that operates as a persistent background service on personal computing devices. Through deep integration with local system resources and secure sandboxed execution, the assistant will:  
+- Automate repetitive workflows (Email triage, document drafting, course material curation)  
+- Learn user patterns via privacy-preserving machine learning  
+- Provide proactive suggestions while maintaining full user control  
+- Maintains 50+ conversation context depth
+- Role-playing with 100+ character templates
+- Automatic performance tuning via RLHF
+- 
+**中文**  
+致力于打造**AI驱动的数字化劳动力**，作为常驻后台服务深度融入个人计算设备。通过本地系统资源整合与安全沙箱化执行，助手将实现：  
+- 自动化重复工作流（邮件处理、文档草拟、课件整理）  
+- 通过隐私保护型机器学习理解用户模式  
+- 在保持用户完全控制权的前提下提供主动建议  
+- 支持50+轮对话的上下文记忆
+- 提供多种角色扮演模板
+- 通过强化学习实现自动优化
+
+### Key Technical Advantages / 关键技术优势  
+```diff
++ 本地化AI推理引擎 支持CPU/GPU混合计算
++ 工作流可视化编辑器 (WYSIWYG)
++ 沙箱化执行保障系统安全
++ 跨Windows/Linux的标准化API接口
+```
 
 ### 🚀 Technical Milestones / 技术里程碑
 
@@ -101,6 +136,9 @@ We envision an AI assistant that grows with users through:
 | 2025.Q3 | Achieve 95% module hot-swap success rate | 实现95%模块热插拔成功率 |
 | 2026.Q1 | Support 10+ IoT device protocols | 支持10+种物联网协议 |
 | 2026.Q4 | Implement federated learning framework | 实现联邦学习框架 |
+
+
+
 
 ## Community / 社区
 
