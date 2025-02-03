@@ -1,0 +1,16 @@
+name: echo_module
+version: "0.0.1"
+entry_point: "modules.echo_module.core:EchoModule"
+dependencies: []
+capabilities:
+  - echo
+required_resources:
+  cpu: 0.2
+  gpu_mem: 256
+config_schema:
+  logging_level:
+    type: string
+    default: "DEBUG"
+  response_delay:
+    type: int
+    default: 0

@@ -7,30 +7,31 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-
-
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rmessage.proto\x12\ncore.proto\"_\n\x06Header\x12\x0e\n\x06msg_id\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\t\x12\x0e\n\x06source\x18\x03 \x01(\t\x12\r\n\x05route\x18\x04 \x03(\t\x12\x13\n\x0bretry_count\x18\x05 \x01(\x05\"\xb2\x01\n\x04\x42ody\x12%\n\x04type\x18\x01 \x01(\x0e\x32\x17.core.proto.MessageType\x12\x0f\n\x07\x63ommand\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x30\n\x08metadata\x18\x04 \x03(\x0b\x32\x1e.core.proto.Body.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"N\n\x08\x45nvelope\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.core.proto.Header\x12\x1e\n\x04\x62ody\x18\x02 \x01(\x0b\x32\x10.core.proto.Body*6\n\x0bMessageType\x12\x0b\n\x07\x43OMMAND\x10\x00\x12\t\n\x05\x45VENT\x10\x01\x12\x0f\n\x0b\x44\x41TA_STREAM\x10\x02\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\rmessage.proto\x12\ncore.proto"_\n\x06Header\x12\x0e\n\x06msg_id\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\t\x12\x0e\n\x06source\x18\x03 \x01(\t\x12\r\n\x05route\x18\x04 \x03(\t\x12\x13\n\x0bretry_count\x18\x05 \x01(\x05"\xb2\x01\n\x04\x42ody\x12%\n\x04type\x18\x01 \x01(\x0e\x32\x17.core.proto.MessageType\x12\x0f\n\x07\x63ommand\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x30\n\x08metadata\x18\x04 \x03(\x0b\x32\x1e.core.proto.Body.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"N\n\x08\x45nvelope\x12"\n\x06header\x18\x01 \x01(\x0b\x32\x12.core.proto.Header\x12\x1e\n\x04\x62ody\x18\x02 \x01(\x0b\x32\x10.core.proto.Body*6\n\x0bMessageType\x12\x0b\n\x07\x43OMMAND\x10\x00\x12\t\n\x05\x45VENT\x10\x01\x12\x0f\n\x0b\x44\x41TA_STREAM\x10\x02\x62\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'message_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "message_pb2", _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
-  DESCRIPTOR._options = None
-  _globals['_BODY_METADATAENTRY']._options = None
-  _globals['_BODY_METADATAENTRY']._serialized_options = b'8\001'
-  _globals['_MESSAGETYPE']._serialized_start=387
-  _globals['_MESSAGETYPE']._serialized_end=441
-  _globals['_HEADER']._serialized_start=29
-  _globals['_HEADER']._serialized_end=124
-  _globals['_BODY']._serialized_start=127
-  _globals['_BODY']._serialized_end=305
-  _globals['_BODY_METADATAENTRY']._serialized_start=258
-  _globals['_BODY_METADATAENTRY']._serialized_end=305
-  _globals['_ENVELOPE']._serialized_start=307
-  _globals['_ENVELOPE']._serialized_end=385
+    DESCRIPTOR._options = None
+    _globals["_BODY_METADATAENTRY"]._options = None
+    _globals["_BODY_METADATAENTRY"]._serialized_options = b"8\001"
+    _globals["_MESSAGETYPE"]._serialized_start = 387
+    _globals["_MESSAGETYPE"]._serialized_end = 441
+    _globals["_HEADER"]._serialized_start = 29
+    _globals["_HEADER"]._serialized_end = 124
+    _globals["_BODY"]._serialized_start = 127
+    _globals["_BODY"]._serialized_end = 305
+    _globals["_BODY_METADATAENTRY"]._serialized_start = 258
+    _globals["_BODY_METADATAENTRY"]._serialized_end = 305
+    _globals["_ENVELOPE"]._serialized_start = 307
+    _globals["_ENVELOPE"]._serialized_end = 385
 # @@protoc_insertion_point(module_scope)

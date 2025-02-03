@@ -1,0 +1,18 @@
+name: core
+version: "0.0.1"
+entry_point: "core.main:Core"
+dependencies: []
+capabilities:
+  - message_bus
+  - scheduler
+  - event_dispatcher
+required_resources:
+  cpu: 0.5
+  gpu_mem: 1024
+config_schema:
+  log_level:
+    type: string
+    default: "DEBUG"
+  max_connections:
+    type: int
+    default: 100

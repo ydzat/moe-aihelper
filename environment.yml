@@ -17,3 +17,5 @@ dependencies:
   - pip:
       - mypy
       - black
+      - proto-plus
+      - pytest-asyncio
