@@ -1,32 +1,23 @@
----
-
-# **AI个人助理系统需求文档（最终版）**
+# **AI个人助理系统需求文档（更新版）**
 
 ---
 
-## **一、核心架构实现细节**
+## **一、核心架构实现**
 
-### 1.1 模块通信协议
-#### **ZeroMQ 配置**
+### 1.1 消息协议设计
+#### **ZeroMQ 通讯接口**
+ZeroMQ is used for efficient message passing between modules. The system uses a publish-subscribe pattern to facilitate communication.
+
+#### **核心通信初始化**
 ```python
-# 核心-模块通信初始化
+# core/message_bus.py
 import zmq
 
-# 核心端（REQ/REP 模式）
-context = zmq.Context()
-core_socket = context.socket(zmq.REP)
-core_socket.bind("tcp://*:5555")
-
-# 事件总线（PUB/SUB 模式）
-pub_socket = context.socket(zmq.PUB)
-pub_socket.bind("tcp://*:5556")
-
-# 模块端（示例）
-module_socket = context.socket(zmq.REQ)
-module_socket.connect("tcp://localhost:5555")
-sub_socket = context.socket(zmq.SUB)
-sub_socket.connect("tcp://localhost:5556")
-sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")  # 订阅所有消息
+class MessageBus:
+    def __init__(self):
+        self.context = zmq.Context()
+        self.socket = self.context.socket(zmq.PUB)
+        self.socket.bind("tcp://*:5555")
 ```
 
 #### **消息格式规范**
@@ -81,56 +72,49 @@ def load_module(module_path: str):
 
 ## **三、基础模块开发指南**
 
-### 3.1 日程管理模块
-#### **API 接口**
-```python
-class CalendarModule:
-    def create_event(self, title: str, time: datetime) -> dict:
-        """创建新事件"""
-        return {
-            "status": "success",
-            "event_id": str(uuid.uuid4())
-        }
-
-    def get_conflicts(self, start: datetime, end: datetime) -> list:
-        """检测时间冲突"""
-        return db.query(Event).filter(
-            Event.start < end,
-            Event.end > start
-        ).all()
+### 3.1 模块开发规范
+#### **模块目录结构**
+```
+modules/echo_module/
+├── __init__.py       # 模块入口
+├── config.yaml       # 模块配置
+├── core.py           # 主逻辑实现
+└── manifest.yaml    # 元数据描述
 ```
 
-#### **自然语言解析示例**
+#### **基础模块实现**
 ```python
-def parse_natural_time(text: str) -> datetime:
-    """解析模糊时间"""
-    # 示例：解析"下周三下午三点"
-    now = datetime.now()
-    next_wednesday = now + timedelta((2 - now.weekday()) % 7)
-    return next_wednesday.replace(hour=15, minute=0)
+# modules/echo_module/core.py
+from core.base_module import BaseModule
+
+class EchoModule(BaseModule):
+    def initialize(self):
+        self.register_command("echo", self.handle_echo)
+        
+    def handle_echo(self, message):
+        """示例命令处理"""
+        return {"status": "success", "result": message.data}
 ```
 
 ---
 
 ## **四、开发环境配置**
 
-### 4.1 Docker 优化配置
-```dockerfile
-# 多阶段构建
-FROM nvidia/cuda:11.8.0-base-ubuntu22.04 as base
-
-# 开发阶段
-FROM base as dev
-RUN apt-get install -y python3.10-venv
-COPY requirements.txt .
-RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install -r requirements.txt
-
-# 生产阶段
-FROM base as prod
-COPY --from=dev /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-COPY . /app
+### 4.1 环境配置
+```yaml
+# environment.yml
+name: ai-assistant
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - grpcio=1.51.1
+  - protobuf=4.21.11
+  - pytest=7.2.1
+  - pyyaml=6.0
+  - pip:
+    - grpcio-tools==1.51.1
+    - zmq==0.0.0
 ```
 
 ### 4.2 依赖管理规范
@@ -145,26 +129,35 @@ opencv-python-headless==4.7.0
 
 ## **五、测试与部署**
 
-### 5.1 单元测试示例
+### 5.1 测试框架
 ```python
-# tests/test_calendar.py
-def test_event_creation():
-    module = CalendarModule()
-    response = module.create_event("测试会议", datetime.now())
-    assert "event_id" in response
-    assert len(response["event_id"]) == 36  # UUID长度验证
+# test/test_core.py
+import pytest
+from core.message_bus import MessageBus
+
+@pytest.fixture
+def message_bus():
+    bus = MessageBus()
+    yield bus
+    bus.server.stop(0)
+
+def test_message_routing(message_bus):
+    test_msg = MessageEnvelope(...)
+    response = message_bus.send(test_msg)
+    assert response.status == "OK"
+    assert len(response.msg_id) == 32
 ```
 
-### 5.2 部署流程
+### 5.2 部署与测试流程
 ```bash
-# 构建Docker镜像
-docker build -t ai-assistant .
+# 运行单元测试
+./run_tests.sh --cov=core --cov-report=html
 
-# 运行容器（GPU支持）
-docker run --gpus all -v ./config:/app/config ai-assistant
+# 生成protobuf代码
+python -m grpc_tools.protoc -Icore/protos/ --python_out=core/generated --grpc_python_out=core/generated core/protos/message.proto
 
-# Windows原生运行（无Docker）
-python main.py --log-level info
+# 启动服务
+python core/main.py --config core/core_config.yaml
 ```
 
 ---
@@ -197,16 +190,23 @@ mkdocs gh-deploy
 ### 7.1 术语表
 | 术语 | 说明 |
 |------|------|
-| ZeroMQ | 高性能异步消息库，用于模块间通信 |
+| gRPC | 高性能RPC框架，基于HTTP/2和protobuf |
+| protobuf | 结构化数据序列化协议 |
 | CUDA | NVIDIA的GPU并行计算平台 |
 | PUB/SUB | 发布-订阅模式，用于广播事件 |
 
-### 7.2 调试技巧
+### 7.2 日志与监控
 ```python
-# 启用调试模式
-DEBUG = True
-if DEBUG:
-    logging.basicConfig(level=logging.DEBUG)
+# core/resource_monitor.py
+class ResourceMonitor:
+    def __init__(self):
+        self.logger = logging.getLogger('resource')
+        self.logger.addHandler(
+            RotatingFileHandler('logs/message_bus.log', maxBytes=1e6, backupCount=3))
+            
+    def log_message(self, msg):
+        """记录消息总线流量"""
+        self.logger.debug(f"{msg.source} -> {msg.destination}: {msg.type}")
 ```
 
 ### 7.3 社区贡献指南
