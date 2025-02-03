@@ -117,4 +117,7 @@ We envision an AI assistant that grows with users through:
 - 应用场景案例 📊
 
 ## LICENSE / 许可证
+This project is licensed under the **GNU Affero General Public License v3 (AGPL-3.0)**.  
+This means you are free to use, modify, and distribute this software **as long as you also share your modifications under the same license**.
 
+For commercial use, please contact us at ydzat@live.com
