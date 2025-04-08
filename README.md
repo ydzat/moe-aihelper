@@ -1,164 +1,172 @@
-<!--
- * @Author: @ydzat
- * @Date: 2025-01-31 22:06:43
- * @LastEditors: @ydzat
- * @LastEditTime: 2025-02-03 22:44:31
- * @Description: Bilingual README for AI Personal Assistant Core
--->
+# System Blueprint: Moe-AIHelper - A System-Level AI Assistant Integrated with Linux Kernel
 
-# AI Personal Assistant Core / AI个人助理核心
+## Overview
 
-## Overview / 概述
+Moe-AIHelper is a system-level AI assistant designed to operate across user space and kernel space on a Linux-based platform. It provides AI-driven automation, context-aware behavior, and system-level orchestration by integrating advanced AI techniques with low-level system capabilities.
 
-This project is a modular AI personal assistant system core designed to support dynamic module loading, message routing, and resource monitoring. It leverages ZeroMQ for communication and is optimized for both CPU and GPU environments.  
-本项目是一个模块化的AI个人助理系统内核，支持动态模块加载、消息路由和资源监控。它利用ZeroMQ进行通信，并针对CPU和GPU环境进行了优化。
+This blueprint outlines the architectural layers, responsibilities, communication mechanisms, and design considerations to guide the implementation of such a system.
 
-(PS: In the initial stage, most functions have not yet been realized. / 草创阶段，大多功能尚未实现。)
+---
 
-## Core Architecture / 核心架构
+## 0. Project Motivation
 
-```mermaid
-graph TD
-    A[Message Bus] --> B[Module Manager]
-    A --> C[Resource Monitor]
-    B --> D[Plugin Modules]
-    C --> E[Performance Analytics]
+As I am currently taking two advanced courses — **Linux Kernel Programming (LKP)** and **Software Language Engineering (SLE)** — I have decided to transform Moe-AIHelper from an application-level project into a system-level AI assistant that integrates more deeply with the Linux operating system.
+
+In the LKP course, the final goal is to build a Linux kernel or kernel module. Therefore, I aim to align Moe-AIHelper with the kernel I will develop, enabling deep integration and control at the system level.
+
+At the same time, in the SLE course, I have been introduced to the use of modeling languages and the benefits of structural design through model-driven engineering. This inspired me to reconstruct Moe-AIHelper using a modeling-based approach for better modularity, clarity, and maintainability.
+
+With this dual academic background, the project will be developed and maintained as a long-term evolving system. It serves both as a practical outcome of technical research and an exploration toward building intelligent operating system infrastructures.
+
+---
+
+## 1. Architecture Layers
+
+### [1] User Space - AI Logic Layer
+
+- **Component:** `moe-aihelperd` (User Space Daemon)
+- **Language:** Python or C++
+- **Responsibilities:**
+  - Natural language processing (NLP)
+  - Task planning and orchestration
+  - User intent recognition
+  - Interaction with AI models (e.g., LLMs)
+  - Communication with system control layer
+- **External Dependencies:**
+  - PyTorch, Transformers, LangChain, etc.
+  - D-Bus or gRPC for inter-process communication
+
+### [2] User Space - System Control Bridge Layer
+
+- **Component:** `sys-bridge` (Middleware between AI and Kernel)
+- **Language:** C / C++
+- **Responsibilities:**
+  - Wrap system calls (e.g., process control, filesystem operations)
+  - Expose high-level APIs to the AI logic
+  - Facilitate secure and privileged operations
+- **Mechanisms:**
+  - Shared memory, UNIX domain sockets, ioctl, or Netlink sockets
+
+### [3] Kernel Space - Extension Layer
+
+- **Component:** `moe-kmod` (Moe Kernel Module)
+- **Language:** C (Kernel-safe subset)
+- **Responsibilities:**
+  - Intercept system events via hooks (e.g., syscall table, Netfilter, LSM)
+  - Expose controllable behaviors to user space
+  - Enforce AI-driven decisions at the kernel level
+  - Optional: monitor system behavior for feedback
+
+### [4] Kernel Native Layer
+
+- **Component:** Core Linux Kernel APIs and Services
+- **Unmodified Linux kernel base**
+- Provides the base platform, scheduling, memory management, etc.
+
+---
+
+## 2. Component Interactions
+
+```
++-------------------------------+             +-----------------------+
+|        AI Logic (Python)      |             |   System Control      |
+|    moe-aihelperd (daemon)     |<===========>|   Bridge (C/C++)      |
++-------------------------------+     IPC     +-----------------------+
+       |       |                                      |
+       |       | Netlink / ioctl                      |
+       V       V                                      V
++------------------------------------------------------------+
+|           Kernel Module (moe-kmod)                         |
+|    - Monitors syscalls, network, filesystems              |
+|    - Enforces behavior (e.g., block, reroute, log)        |
+|    - Sends system feedback to bridge                      |
++------------------------------------------------------------+
 ```
 
-- **Message Bus**: Facilitates communication between modules using a publish-subscribe pattern.  
-  **消息总线**：使用发布-订阅模式促进模块之间的通信。
-- **Module Manager**: Handles dynamic loading and unloading of modules.  
-  **模块管理器**：处理模块的动态加载和卸载。
-- **Resource Monitor**: Monitors system resources to ensure efficient operation.  
-  **资源监控器**：监控系统资源以确保高效运行。
+---
 
-## 🖥️ Platform Compatibility / 平台兼容性
+## 3. Key Use Cases
 
-### Currently Supported / 当前支持  
-| Platform | Tested Version | Core Features | Notes |  
-|----------|----------------|---------------|-------|  
-| **Windows** | 10/11 22H2+ | Full functionality | GPU acceleration requires NVIDIA GPU |  
-| **Linux** | Fedora 38+ | Full functionality | Optimized for GNOME/KDE desktop environments |  
+- **User-aware automation**: Automatically perform tasks (e.g., open apps, clean temp files) based on inferred user intent
+- **AI-driven security**: Block suspicious processes based on LLM evaluation or behavior patterns
+- **Context-aware scheduling**: Optimize resource usage depending on user activity or battery state
+- **Intelligent prompt injection**: Feed kernel-level events (e.g., file access) into LLM for intelligent reactions
 
-### Future Consideration / 未来考量  
-| Platform | Status | Timeline |  
-|----------|--------|----------|  
-| macOS | Not planned | - |  
-| Android/iOS | Not planned | - |  
+---
 
-## Quick Start / 快速启动
+## 4. Design Principles
 
-1. **Environment Setup** / **环境设置**:
-   ```bash
-   conda env create -f environment.yml
-   conda activate ai-assistant
-   ```
+- **Modularity:** Components should be replaceable (e.g., swap AI engine or sys bridge)
+- **Security-first:** Ensure kernel space access is restricted and properly sandboxed
+- **Asynchronous IPC:** Use non-blocking communication between AI and bridge layers
+- **Fallback compatibility:** If AI logic crashes, system remains stable via default kernel behavior
 
-2. **Run the Core** / **运行核心**:
-   ```bash
-   python -m core.main --log-level INFO
-   ```
+---
 
-3. **Run Tests** / **运行测试**:
-   ```bash
-   pytest test/test_integration -v
-   ```
-   *PS: Core service is automatically managed during testing / 注：测试时无需手动运行核心服务*
+## 5. Development Roadmap
 
-## Key Features / 核心功能
+1. Prototype `moe-aihelperd` with LLM integration (Python)
+2. Build `sys-bridge` wrapper for system calls with C++
+3. Develop `moe-kmod` for kernel-level event interception
+4. Integrate Netlink or ioctl communication between layers
+5. Package as systemd service with auto-recovery and logging
 
-| Feature | Description | 功能描述 |
-|---------|-------------|----------|
-| 🔌 Dynamic Module System | Hot-swappable modules with dependency resolution | 支持依赖解析的模块热插拔 |
-| 🚀 GPU Accelerated | CUDA-optimized components for AI workloads | 为AI计算优化的CUDA组件 |
-| 🔒 Privacy First | Local data processing with AES-256 encryption | 本地化数据处理与AES-256加密 |
-| 🌐 Multi-Protocol Support | ZeroMQ + Protobuf + REST API interfaces | 多协议通信支持 |
+---
 
-## Development Guide / 开发指南
+## 6. Long-term Vision
 
-### Module Development / 模块开发
-```python
-class MyModule(BaseModule):
-    def handle_message(self, envelope):
-        """Process incoming messages"""
-        return ResponseBuilder.success(data=processed_data)
-```
+- Full integration into intelligent OS (smart desktop assistant)
+- Secure AI-managed syscall filtering and behavioral monitoring
+- Language-adaptive interaction (supporting natural speech, shell commands, GUIs)
 
-### API Documentation / 接口文档
-```bash
-# Generate API docs
-pdoc3 --html core/ --force
-```
+---
 
-## 🌐 Core Technical Vision / 核心技术愿景
+## 中文对照
 
-```mermaid
-graph TD
-    A[Local AI Agent] --> B[Workflow Automation Engine]
-    B --> C[Email Management]
-    B --> D[Document Generation]
-    B --> E[Courseware Organization]
-    C --> F[Smart Filtering]
-    D --> G[Template System]
-    E --> H[Multimedia Integration]
-```
+### 概述
 
-**English**  
-Our ultimate goal is to create an **AI-driven digital workforce** that operates as a persistent background service on personal computing devices. Through deep integration with local system resources and secure sandboxed execution, the assistant will:  
-- Automate repetitive workflows (Email triage, document drafting, course material curation)  
-- Learn user patterns via privacy-preserving machine learning  
-- Provide proactive suggestions while maintaining full user control  
-- Maintains 50+ conversation context depth
-- Role-playing with 100+ character templates
-- Automatic performance tuning via RLHF
-- 
-**中文**  
-致力于打造**AI驱动的数字化劳动力**，作为常驻后台服务深度融入个人计算设备。通过本地系统资源整合与安全沙箱化执行，助手将实现：  
-- 自动化重复工作流（邮件处理、文档草拟、课件整理）  
-- 通过隐私保护型机器学习理解用户模式  
-- 在保持用户完全控制权的前提下提供主动建议  
-- 支持50+轮对话的上下文记忆
-- 提供多种角色扮演模板
-- 通过强化学习实现自动优化
+Moe-AIHelper 是一个设计于 Linux 基础上，基于用户态和内核端协同工作的系统级 AI 助手。它通过 AI 推理、上下文识别和系统级作置能力，实现智能化自动化操作。
 
-### Key Technical Advantages / 关键技术优势  
-```diff
-+ 本地化AI推理引擎 支持CPU/GPU混合计算
-+ 工作流可视化编辑器 (WYSIWYG)
-+ 沙箱化执行保障系统安全
-+ 跨Windows/Linux的标准化API接口
-```
+### 关于本项目的缘起说明
 
-### 🚀 Technical Milestones / 技术里程碑
+由于我本学期正在同时学习 Linux Kernel Programming（LKP） 以及 Software Language Engineering（SLE），因此决定将原本应用层级的 Moe-AIHelper 改造为一个更接近系统核心的系统级 AI 助手程序。
 
-| Phase | Target | 阶段目标 |
-|-------|--------|----------|
-| 2025.Q3 | Achieve 95% module hot-swap success rate | 实现95%模块热插拔成功率 |
-| 2026.Q1 | Support 10+ IoT device protocols | 支持10+种物联网协议 |
-| 2026.Q4 | Implement federated learning framework | 实现联邦学习框架 |
+LKP 课程最终会要求构建一个内核或内核模块，而我希望 Moe-AIHelper 能够与这个自定义内核实现配合工作，进行深层集成与控制。
 
+另一方面，在 SLE 课程中，我开始学习建模语言及其结构化设计的优势，这激发了我将该系统以建模驱动方式进行规范建构的想法。
 
+基于上述双重背景，本项目将作为一个长期演进的系统工程进行持续维护与拓展，既是技术研究成果的实践落地，也是对智能操作系统理念的探索实现。
 
+### 结构层级
 
-## Community / 社区
+1. **AI 逻辑层（用户态）**：用于 LLM 分析和任务调度，通常用 Python 实现
+2. **系统控制桥接层（用户态）**：作为 AI 逻辑和内核之间的中间层，用 C/C++ 实现
+3. **内核扩展层**：进行 syscall hook、Netfilter 路由等内核级监控和操作，用 C 实现
+4. **内核原生层**：Linux 内核基础服务（无需修改）
 
-[![Contribution Guide](https://img.shields.io/badge/Contribution-Guide-green)](CONTRIBUTING.md)
+### 组件互动
 
-**We Value Your:**
-- Module contributions 🧩
-- Localization support 🌍
-- Use case studies 📊
+- AI 逻辑层 通过 IPC 与桥接层交互，后者通过 Netlink/ioctl 与内核模块通信
 
-**我们期待您的:**
-- 功能模块贡献 🧩
-- 多语言支持 🌍
-- 应用场景案例 📊
+### 关键场景
 
-## LICENSE / 许可证
+- 智能化安全控制
+- 上下文识别应用
+- 根据内核事件解析 LLM 反应
 
-[![AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+### 设计原则
 
-This project is licensed under the **GNU Affero General Public License v3 (AGPL-3.0)**.  
-This means you are free to use, modify, and distribute this software **as long as you also share your modifications under the same license**.
+- 模块化、安全优先、异步 IPC、系统耐振性
 
-For commercial use, please contact us at ydzat@live.com
+### 开发路线
+
+1. Python 实现 AI daemon
+2. C++ 实现 syscall 桥接层
+3. C 实现内核扩展模块
+4. 完善上下通信 + systemd 集成
+
+### 远望
+
+- AI 教育性操作系统
+- 进化系统管理和行为检索
+- 支持自然语言 + GUI + CLI 等多模态交互
