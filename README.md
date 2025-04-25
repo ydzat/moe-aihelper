@@ -1,3 +1,14 @@
+> ⚠️ **This project is deprecated: moe-aihelper**
+>
+> This repository contains an early prototype and is no longer maintained.
+> The project has been **fully rewritten** and moved to a new repository:
+>
+> - 🔗 GitLab: [moeai-c @ GitLab](https://gitlab.dongzeyang.top/ydzat/moeai-c)
+> - 🔗 GitHub Mirror: [moeai-c @ GitHub](https://github.com/ydzat/moeai-c)
+>
+> Please refer to the new repository for up-to-date code, documentation, and development progress.
+
+
 # System Blueprint: Moe-AIHelper - A System-Level AI Assistant Integrated with Linux Kernel
 
 ## Overview
